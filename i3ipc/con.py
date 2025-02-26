@@ -3,10 +3,15 @@ import sys
 from .model import Rect, Gaps
 from . import replies
 from collections import deque
-from typing import List, Optional
+from typing import Any, cast, Generic, Literal, Optional, TypeVar, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .connection import Connection
+
+_Con = TypeVar('_Con', bound='Con')
 
 
-class Con:
+class Con(Generic[_Con]):
     """A container of a window and child containers gotten from :func:`i3ipc.Connection.get_tree()` or events.
 
     .. seealso:: https://i3wm.org/docs/ipc.html#_tree_reply
@@ -85,7 +90,40 @@ class Con:
     :ivar ipc_data: The raw data from the i3 ipc.
     :vartype ipc_data: dict
     """
-    def __init__(self, data, parent, conn):
+    border: str
+    current_border_width: int
+    floating: Literal["auto_off", "auto_on", "user_off", "user_on"]
+    focus: list[int]
+    focused: bool
+    fullscreen_mode: int
+    id: int
+    layout: str
+    marks: list[str]
+    name: str
+    num: int
+    orientation: str
+    percent: float
+    scratchpad_state: str
+    shell: str
+    sticky: bool
+    type: str
+    urgent: bool
+    window: int
+    window_class: Optional[str]
+    window_instance: Optional[str]
+    window_role: Optional[str]
+    window_title: Optional[str]
+    rect: Rect
+    window_rect: Rect
+    deco_rect: Optional[Rect]
+    geometry: Optional[Rect]
+    app_id: str
+    pid: int
+    gaps: Optional[Gaps]
+    representation: str
+    visible: bool
+
+    def __init__(self: _Con, data: dict[str, Any], parent: _Con, conn: 'Connection'):
         self.ipc_data = data
         self._conn = conn
         self.parent = parent
@@ -126,12 +164,12 @@ class Con:
         self.nodes = []
         if 'nodes' in data:
             for n in data['nodes']:
-                self.nodes.append(self.__class__(n, self, conn))
+                self.nodes.append(cast(_Con, self.__class__(n, self, conn)))
 
         self.floating_nodes = []
         if 'floating_nodes' in data:
             for n in data['floating_nodes']:
-                self.floating_nodes.append(self.__class__(n, self, conn))
+                self.floating_nodes.append(cast(_Con, self.__class__(n, self, conn)))
 
         self.window_class = None
         self.window_instance = None
@@ -185,7 +223,7 @@ class Con:
             return True
         return False
 
-    def root(self) -> 'Con':
+    def root(self) -> _Con:
         """Gets the root container.
 
         :returns: The root container.
@@ -193,7 +231,7 @@ class Con:
         """
 
         if not self.parent:
-            return self
+            return cast(_Con, self)
 
         con = self.parent
 
@@ -202,7 +240,7 @@ class Con:
 
         return con
 
-    def descendants(self) -> List['Con']:
+    def descendants(self) -> list[_Con]:
         """Gets a list of all child containers for the container in
         breadth-first order.
 
@@ -211,7 +249,7 @@ class Con:
         """
         return [c for c in self]
 
-    def descendents(self) -> List['Con']:
+    def descendents(self) -> list[_Con]:
         """Gets a list of all child containers for the container in
         breadth-first order.
 
@@ -224,7 +262,7 @@ class Con:
         print('WARNING: descendents is deprecated. Use `descendants()` instead.', file=sys.stderr)
         return self.descendants()
 
-    def leaves(self) -> List['Con']:
+    def leaves(self) -> list[_Con]:
         """Gets a list of leaf child containers for this container in
         breadth-first order. Leaf containers normally contain application
         windows.
@@ -240,7 +278,7 @@ class Con:
 
         return leaves
 
-    def command(self, command: str) -> List[replies.CommandReply]:
+    def command(self, command: str) -> list[replies.CommandReply]:
         """Runs a command on this container.
 
         .. seealso:: https://i3wm.org/docs/userguide.html#list_of_commands
@@ -251,7 +289,7 @@ class Con:
         """
         return self._conn.command('[con_id="{}"] {}'.format(self.id, command))
 
-    def command_children(self, command: str) -> List[replies.CommandReply]:
+    def command_children(self, command: str) -> list[replies.CommandReply]:
         """Runs a command on the immediate children of the currently selected
         container.
 
@@ -260,16 +298,14 @@ class Con:
         :returns: A list of replies for each command that was executed.
         :rtype: list(:class:`CommandReply <i3ipc.CommandReply>`)
         """
-        if not len(self.nodes):
-            return
 
         commands = []
         for c in self.nodes:
             commands.append('[con_id="{}"] {};'.format(c.id, command))
 
-        self._conn.command(' '.join(commands))
+        return self._conn.command(' '.join(commands))
 
-    def workspaces(self) -> List['Con']:
+    def workspaces(self) -> list[_Con]:
         """Gets a list of workspace containers for this tree.
 
         :returns: A list of workspace containers.
@@ -288,7 +324,7 @@ class Con:
         collect_workspaces(self.root())
         return workspaces
 
-    def find_focused(self) -> Optional['Con']:
+    def find_focused(self) -> Optional[_Con]:
         """Finds the focused container under this container if it exists.
 
         :returns: The focused container if it exists.
@@ -300,7 +336,7 @@ class Con:
         except StopIteration:
             return None
 
-    def find_by_id(self, id: int) -> Optional['Con']:
+    def find_by_id(self, id: int) -> Optional[_Con]:
         """Finds a container with the given container id under this node.
 
         :returns: The container with this container id if it exists.
@@ -312,7 +348,7 @@ class Con:
         except StopIteration:
             return None
 
-    def find_by_pid(self, pid: int) -> List['Con']:
+    def find_by_pid(self, pid: int) -> list[_Con]:
         """Finds all the containers under this node with this pid.
 
         :returns: A list of containers with this pid.
@@ -320,7 +356,7 @@ class Con:
         """
         return [c for c in self if c.pid == pid]
 
-    def find_by_window(self, window: int) -> Optional['Con']:
+    def find_by_window(self, window: int) -> Optional[_Con]:
         """Finds a container with the given window id under this node.
 
         :returns: The container with this window id if it exists.
@@ -332,7 +368,7 @@ class Con:
         except StopIteration:
             return None
 
-    def find_by_role(self, pattern: str) -> List['Con']:
+    def find_by_role(self, pattern: str) -> list[_Con]:
         """Finds all the containers under this node with a window role that
         matches the given regex pattern.
 
@@ -342,7 +378,7 @@ class Con:
         """
         return [c for c in self if c.window_role and re.search(pattern, c.window_role)]
 
-    def find_named(self, pattern: str) -> List['Con']:
+    def find_named(self, pattern: str) -> list[_Con]:
         """Finds all the containers under this node with a name that
         matches the given regex pattern.
 
@@ -352,7 +388,7 @@ class Con:
         """
         return [c for c in self if c.name and re.search(pattern, c.name)]
 
-    def find_titled(self, pattern: str) -> List['Con']:
+    def find_titled(self, pattern: str) -> list[_Con]:
         """Finds all the containers under this node with a window title that
         matches the given regex pattern.
 
@@ -362,7 +398,7 @@ class Con:
         """
         return [c for c in self if c.window_title and re.search(pattern, c.window_title)]
 
-    def find_classed(self, pattern: str) -> List['Con']:
+    def find_classed(self, pattern: str) -> list[_Con]:
         """Finds all the containers under this node with a window class,
         or app_id that matches the given regex pattern.
 
@@ -375,7 +411,7 @@ class Con:
 
         return x11_windows + wayland_windows
 
-    def find_instanced(self, pattern: str) -> List['Con']:
+    def find_instanced(self, pattern: str) -> list[_Con]:
         """Finds all the containers under this node with a window instance that
         matches the given regex pattern.
 
@@ -385,7 +421,7 @@ class Con:
         """
         return [c for c in self if c.window_instance and re.search(pattern, c.window_instance)]
 
-    def find_marked(self, pattern: str = ".*") -> List['Con']:
+    def find_marked(self, pattern: str = ".*") -> list[_Con]:
         """Finds all the containers under this node with a mark that
         matches the given regex pattern.
 
@@ -393,10 +429,10 @@ class Con:
             pattern.
         :rtype: list(:class:`Con`)
         """
-        pattern = re.compile(pattern)
-        return [c for c in self if any(pattern.search(mark) for mark in c.marks)]
+        cpattern = re.compile(pattern)
+        return [c for c in self if any(cpattern.search(mark) for mark in c.marks)]
 
-    def find_fullscreen(self) -> List['Con']:
+    def find_fullscreen(self) -> list[_Con]:
         """Finds all the containers under this node that are in fullscreen
         mode.
 
@@ -405,7 +441,7 @@ class Con:
         """
         return [c for c in self if c.type == 'con' and c.fullscreen_mode]
 
-    def workspace(self) -> Optional['Con']:
+    def workspace(self) -> Optional[_Con]:
         """Finds the workspace container for this node if this container is at
         or below the workspace level.
 
@@ -414,7 +450,7 @@ class Con:
             workspace level.
         """
         if self.type == 'workspace':
-            return self
+            return cast(_Con, self)
 
         ret = self.parent
 
@@ -425,7 +461,7 @@ class Con:
 
         return ret
 
-    def scratchpad(self) -> 'Con':
+    def scratchpad(self) -> Optional[_Con]:
         """Finds the scratchpad container.
 
         :returns: The scratchpad container.
