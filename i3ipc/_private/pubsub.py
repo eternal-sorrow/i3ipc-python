@@ -1,11 +1,13 @@
-from typing import Callable, Optional, TypeAlias, TypedDict, TYPE_CHECKING
+from typing import Callable, Optional, TypeAlias, TypedDict, TypeVar, TYPE_CHECKING
 
 from i3ipc.events import IpcBaseEvent
 
 if TYPE_CHECKING:
     from i3ipc.connection import Connection
 
-Handler: TypeAlias = Callable[['Connection', IpcBaseEvent], None]
+_BaseEvent = TypeVar('_BaseEvent', bound=IpcBaseEvent, contravariant=True)
+
+Handler: TypeAlias = Callable[['Connection', _BaseEvent], None]
 
 
 class Subscription(TypedDict):

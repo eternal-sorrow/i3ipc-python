@@ -5,9 +5,9 @@ from .replies import (BarConfigReply, CommandReply, ConfigReply, OutputReply, Ti
                       VersionReply, WorkspaceReply, SeatReply, InputReply)
 from .events import (IpcBaseEvent, BarconfigUpdateEvent, BindingEvent, OutputEvent, ShutdownEvent,
                      WindowEvent, TickEvent, ModeEvent, WorkspaceEvent, InputEvent, Event)
-from ._private import PubSub, MessageType, EventType, Synchronizer
+from ._private import PubSub, Handler, MessageType, EventType, Synchronizer
 
-from typing import List, Optional, Union, Callable
+from typing import List, Optional, Union
 import struct
 import json
 import socket
@@ -380,7 +380,7 @@ class Connection:
         self.subscriptions |= events
         return result
 
-    def off(self, handler: Callable[['Connection', IpcBaseEvent], None]):
+    def off(self, handler: Handler):
         """Unsubscribe the handler from being called on ipc events.
 
         :param handler: The handler that was previously attached with
@@ -389,9 +389,7 @@ class Connection:
         """
         self._pubsub.unsubscribe(handler)
 
-    def on(self,
-           event: Union[Event, str],
-           handler: Optional[Callable[['Connection', IpcBaseEvent], None]] = None):
+    def on(self, event: Union[Event, str], handler: Optional[Handler] = None):
         def on_wrapped(handler):
             self._on(event, handler)
             return handler
@@ -401,7 +399,7 @@ class Connection:
         else:
             return on_wrapped
 
-    def _on(self, event: Union[Event, str], handler: Callable[['Connection', IpcBaseEvent], None]):
+    def _on(self, event: Union[Event, str], handler: Handler):
         """Subscribe to the event and call the handler when it is emitted by
         the i3 ipc.
 

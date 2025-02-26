@@ -6,7 +6,7 @@ from ..events import (IpcBaseEvent, BarconfigUpdateEvent, BindingEvent, OutputEv
 from .. import con
 import os
 import json
-from typing import Callable, Coroutine, Optional, TypeAlias, TypedDict, Union
+from typing import Callable, Coroutine, Optional, TypeAlias, TypedDict, TypeVar, Union
 import struct
 import socket
 import logging
@@ -33,8 +33,11 @@ def ensure_future(obj):
     return future
 
 
+_BaseEvent = TypeVar('_BaseEvent', bound=IpcBaseEvent, contravariant=True)
+
+
 Handler: TypeAlias = Union[
-    Callable[['Connection', IpcBaseEvent], None], Callable[['Connection', IpcBaseEvent], Coroutine]
+    Callable[['Connection', _BaseEvent], None], Callable[['Connection', _BaseEvent], Coroutine]
 ]
 
 
@@ -562,7 +565,7 @@ class Connection:
         self._pubsub.subscribe(event, handler)  # type: ignore[arg-type]
         ensure_future(self.subscribe([base_event]))
 
-    def off(self, handler: Callable[['Connection', IpcBaseEvent], None]):
+    def off(self, handler: Handler):
         """Unsubscribe the handler from being called on ipc events.
 
         :param handler: The handler that was previously attached with
