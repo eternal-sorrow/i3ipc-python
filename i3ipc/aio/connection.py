@@ -6,7 +6,7 @@ from ..events import (IpcBaseEvent, BarconfigUpdateEvent, BindingEvent, OutputEv
 from .. import con
 import os
 import json
-from typing import Callable, Coroutine, Optional, TypeAlias, TypedDict, TypeVar, Union
+from typing import Callable, Coroutine, Optional, TypedDict, TypeVar, Union
 import struct
 import socket
 import logging
@@ -33,24 +33,23 @@ def ensure_future(obj):
     return future
 
 
-_BaseEvent = TypeVar('_BaseEvent', bound=IpcBaseEvent, contravariant=True)
+_EV = TypeVar('_EV', bound=IpcBaseEvent, contravariant=True)
 
 
-Handler: TypeAlias = Union[
-    Callable[['Connection', _BaseEvent], None], Callable[['Connection', _BaseEvent], Coroutine]
-]
+type Handler[T] = Callable[['Connection', T], None] | Callable[['Connection', T], Coroutine[None, None, None]]
+
 
 
 class _Subscription(TypedDict):
     event: str
     detail: Optional[str]
-    handler: Handler
+    handler: Handler[IpcBaseEvent]
 
 
 class _AIOPubSub(PubSub):
     _subscriptions: list[_Subscription]  # type: ignore[assignment]
 
-    def queue_handler(self, handler: Handler, data: Optional[IpcBaseEvent] = None):
+    def queue_handler(self, handler: Handler[_EV], data: Optional[IpcBaseEvent] = None):
         conn: Connection = self.conn  # type: ignore[assignment]
 
         async def handler_coroutine():
@@ -530,8 +529,10 @@ class Connection:
 
         await self._loop.sock_sendall(self._sub_socket, _pack(MessageType.SUBSCRIBE, payload))
 
-    def on(self, event: Union[Event, str], handler: Optional[Handler] = None):
-        def on_wrapped(handler):
+    def on(
+        self, event: Event | str, handler: Handler[_EV] | None = None
+    ) -> Handler[_EV] | Callable[[Handler[_EV]], Handler[_EV]]:
+        def on_wrapped(handler: Handler[_EV]) -> Handler[_EV]:
             self._on(event, handler)
             return handler
 
@@ -540,7 +541,7 @@ class Connection:
         else:
             return on_wrapped
 
-    def _on(self, event: Union[Event, str], handler: Handler):
+    def _on(self, event: Event | str, handler: Handler[_EV]):
         """Subscribe to the event and call the handler when it is emitted by
         the i3 ipc.
 
@@ -565,7 +566,7 @@ class Connection:
         self._pubsub.subscribe(event, handler)  # type: ignore[arg-type]
         ensure_future(self.subscribe([base_event]))
 
-    def off(self, handler: Handler):
+    def off(self, handler: Handler[_EV]):
         """Unsubscribe the handler from being called on ipc events.
 
         :param handler: The handler that was previously attached with
